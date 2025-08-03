@@ -1,0 +1,291 @@
+// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MODERATOR
+  USER
+}
+
+enum VideoStatus {
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum VideoVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ProcessingJobType {
+  TRANSCODE
+  THUMBNAIL
+  PREVIEW
+  METADATA_EXTRACTION
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  username          String   @unique
+  passwordHash      String   @map("password_hash")
+  firstName         String?  @map("first_name")
+  lastName          String?  @map("last_name")
+  avatarUrl         String?  @map("avatar_url")
+  role              UserRole @default(USER)
+  isActive          Boolean  @default(true) @map("is_active")
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  lastLogin         DateTime? @map("last_login")
+
+  // Relations
+  videos            Video[]
+  comments          Comment[]
+  videoViews        VideoView[]
+  videoReactions    VideoReaction[]
+  sessions          UserSession[]
+
+  @@map("users")
+  @@index([email])
+  @@index([username])
+  @@index([role])
+}
+
+model UserSession {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  sessionToken  String   @unique @map("session_token")
+  refreshToken  String?  @unique @map("refresh_token")
+  expiresAt     DateTime @map("expires_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  lastAccessed  DateTime @default(now()) @map("last_accessed")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+
+  // Relations
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([expiresAt])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  code        String    @unique
+  description String?
+  thumbnailUrl String?  @map("thumbnail_url")
+  parentId    String?   @map("parent_id")
+  sortOrder   Int       @default(0) @map("sort_order")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  videos      Video[]
+
+  @@map("categories")
+  @@index([parentId])
+}
+
+model Video {
+  id                    String           @id @default(cuid())
+  title                 String
+  description           String?
+  code                  String           @unique
+  userId                String           @map("user_id")
+  categoryId            String?          @map("category_id")
+  
+  // Video metadata
+  duration              Int?             // seconds
+  fileSize              BigInt?          @map("file_size")
+  
+  // Processing status
+  status                VideoStatus      @default(UPLOADING)
+  processingProgress    Int              @default(0) @map("processing_progress")
+  errorMessage          String?          @map("error_message")
+  
+  // File paths and URLs
+  originalFilePath      String?          @map("original_file_path")
+  processedFilePath     String?          @map("processed_file_path")
+  thumbnailUrl          String?          @map("thumbnail_url")
+  previewGifUrl         String?          @map("preview_gif_url")
+  
+  // Streaming URLs
+  hlsPlaylistUrl        String?          @map("hls_playlist_url")
+  dashManifestUrl       String?          @map("dash_manifest_url")
+  
+  // Privacy and access
+  visibility            VideoVisibility  @default(PRIVATE)
+  allowComments         Boolean          @default(true) @map("allow_comments")
+  allowDownloads        Boolean          @default(false) @map("allow_downloads")
+  
+  // Cached statistics
+  viewCount             BigInt           @default(0) @map("view_count")
+  likeCount             Int              @default(0) @map("like_count")
+  dislikeCount          Int              @default(0) @map("dislike_count")
+  commentCount          Int              @default(0) @map("comment_count")
+  
+  // SEO
+  metaTitle             String?          @map("meta_title")
+  metaDescription       String?          @map("meta_description")
+  tags                  String[]
+  
+  // Timestamps
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category              Category?        @relation(fields: [categoryId], references: [id])
+  qualities             VideoQuality[]
+  processingJobs        VideoProcessingJob[]
+  comments              Comment[]
+  views                 VideoView[]
+  reactions             VideoReaction[]
+
+  @@map("videos")
+  @@index([userId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([viewCount])
+}
+
+model VideoQuality {
+  id            String   @id @default(cuid())
+  videoId       String   @map("video_id")
+  label         String   @map("label") // "1080p", "720p", etc.
+  resolution    String   @map("resolution") // "1920x1080"
+  bitrate       Int      @map("bitrate")
+  filePath      String   @map("file_path")
+  fileSize      BigInt   @map("file_size")
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  video         Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@map("video_qualities")
+  @@index([videoId])
+  @@index([label])
+}
+
+model VideoProcessingJob {
+  id            String             @id @default(cuid())
+  videoId       String             @map("video_id")
+  jobType       ProcessingJobType  @map("job_type")
+  status        JobStatus          @default(PENDING)
+  priority      Int                @default(1)
+  attempts      Int                @default(0)
+  maxAttempts   Int                @default(3) @map("max_attempts")
+  errorMessage  String?            @map("error_message")
+  metadata      Json?
+  
+  // Scheduling
+  scheduledAt   DateTime           @default(now()) @map("scheduled_at")
+  startedAt     DateTime?          @map("started_at")
+  completedAt   DateTime?          @map("completed_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  // Relations
+  video         Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@map("video_processing_jobs")
+  @@index([videoId])
+  @@index([status])
+  @@index([jobType])
+  @@index([scheduledAt])
+}
+
+model Comment {
+  id            String    @id @default(cuid())
+  videoId       String    @map("video_id")
+  userId        String    @map("user_id")
+  parentId      String?   @map("parent_id")
+  content       String
+  isEdited      Boolean   @default(false) @map("is_edited")
+  likeCount     Int       @default(0) @map("like_count")
+  dislikeCount  Int       @default(0) @map("dislike_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  video         Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent        Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+  @@index([videoId])
+  @@index([userId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model VideoView {
+  id                    String   @id @default(cuid())
+  videoId               String   @map("video_id")
+  userId                String?  @map("user_id") // null for anonymous
+  ipAddress             String?  @map("ip_address")
+  userAgent             String?  @map("user_agent")
+  watchDuration         Int?     @map("watch_duration") // seconds
+  completionPercentage  Decimal? @map("completion_percentage") @db.Decimal(5,2)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  // Relations
+  video                 Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user                  User? @relation(fields: [userId], references: [id])
+
+  @@map("video_views")
+  @@index([videoId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([ipAddress])
+}
+
+model VideoReaction {
+  id           String       @id @default(cuid())
+  videoId      String       @map("video_id")
+  userId       String       @map("user_id")
+  reactionType ReactionType @map("reaction_type")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  video        Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("video_reactions")
+  @@unique([videoId, userId])
+  @@index([videoId])
+  @@index([userId])
+}

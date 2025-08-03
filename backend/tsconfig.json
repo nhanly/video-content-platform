@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2020",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "strictPropertyInitialization": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@/*": ["src/*"],
+      "@/shared/*": ["src/shared/*"],
+      "@/core/*": ["src/shared/core/*"],
+      "@/config/*": ["src/shared/config/*"],
+      "@/constants/*": ["src/shared/constants/*"],
+      "@/types/*": ["src/shared/types/*"],
+      "@/interfaces/*": ["src/shared/interfaces/*"],
+      "@/utils/*": ["src/shared/utils/*"],
+
+      "@/infrastructure/*": ["src/shared/infrastructure/*"],
+      "@/cache/*": ["src/shared/infrastructure/cache/*"],
+      "@/database/*": ["src/shared/infrastructure/database/*"],
+      "@/queue/*": ["src/shared/infrastructure/queue/*"],
+      "@/aws/*": ["src/shared/infrastructure/aws/*"],
+      "@/elasticsearch/*": ["src/shared/infrastructure/elasticsearch/*"],
+      "@/monitoring/*": ["src/shared/infrastructure/monitoring/*"],
+      "@/workers/*": ["src/shared/infrastructure/workers/*"],
+
+      "@/auth/*": ["src/modules/auth/*"],
+      "@/user/*": ["src/modules/user/*"],
+      "@/video/*": ["src/modules/video/*"],
+      "@/search/*": ["src/modules/search/*"],
+      "@/common/*": ["src/modules/common/*"]
+    }
+  }
+}

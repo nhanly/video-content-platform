@@ -1,0 +1,250 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: video-streaming-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: video_streaming
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256 --auth-local=scram-sha-256'
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - video-streaming-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d video_streaming']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: video-streaming-redis
+    restart: unless-stopped
+    command: redis-server --requirepass 123 --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/etc/redis/redis.conf
+    networks:
+      - video-streaming-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', '--raw', 'incr', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: video-streaming-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - '5672:5672' # AMQP port
+      - '15672:15672' # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    networks:
+      - video-streaming-network
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: video-streaming-elasticsearch
+    restart: unless-stopped
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=video-streaming-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - 'ES_JAVA_OPTS=-Xms1g -Xmx1g'
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=changeme
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - video-streaming-network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -s -u elastic:changeme http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Backend Application
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-streaming-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+
+      # Database
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/video_streaming?schema=public
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_NAME: video_streaming
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: 123
+
+      # RabbitMQ
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+
+      # Elasticsearch
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+
+      # MinIO (for local S3 replacement)
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_S3_BUCKET_NAME: video-streaming-bucket
+      AWS_REGION: us-east-1
+
+      # Application
+      JWT_SECRET: supersecret-dev-key-change-in-production
+      JWT_EXPIRATION: 15m
+      REFRESH_TOKEN_EXPIRATION: 7d
+
+      # Rate Limiting
+      RATE_LIMIT_WINDOW: 900000
+      RATE_LIMIT_MAX: 100
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - video_uploads:/app/uploads
+    networks:
+      - video-streaming-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Video Processing Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: video-streaming-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+
+      # Database
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/video_streaming?schema=public
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: 123
+
+      # RabbitMQ
+      RABBITMQ_URL: amqp://admin:password@rabbitmq:5672
+
+      # MinIO ( Optional S3 alternative )
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin123
+      AWS_S3_BUCKET_NAME: video-streaming-bucket
+      AWS_REGION: us-east-1
+
+      # Processing settings
+      MAX_CONCURRENT_TRANSCODING: 2
+      PROCESSING_MAX_ATTEMPTS: 3
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - video_uploads:/app/uploads
+      - video_processing:/app/processing
+    networks:
+      - video-streaming-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+networks:
+  video-streaming-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  video_uploads:
+    driver: local
+  video_processing:
+    driver: local
