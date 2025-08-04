@@ -1,5 +1,6 @@
-import { User } from '@/modules/auth/domain/entities/user.entity';
 import { Email } from '@/modules/common/email.vo';
+
+import { User } from '../entities/user.entity';
 
 export abstract class IUserRepository {
   abstract findById(id: string): Promise<User | null>;

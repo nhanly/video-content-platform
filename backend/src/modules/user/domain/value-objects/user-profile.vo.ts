@@ -7,6 +7,12 @@ export interface ProfileProps {
 }
 
 export class UserProfile extends BaseValueObject<ProfileProps> {
+  get firstName() {
+    return this.props.firstName;
+  }
+  get lastName() {
+    return this.props.lastName;
+  }
   get displayName() {
     return this.props.firstName + ' ' + this.props.lastName;
   }

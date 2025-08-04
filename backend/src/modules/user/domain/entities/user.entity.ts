@@ -1,4 +1,5 @@
 import { AggregateRoot, IEvent } from '@nestjs/cqrs';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 import { Email } from '@/common/email.vo';
@@ -15,13 +16,13 @@ interface UserProps {
   role: UserRole;
   isActive: boolean;
   emailVerified: boolean;
-  sessions: UserSession[];
   createdAt: Date;
+  sessions?: UserSession[];
   updatedAt?: Date;
 }
 
 export class User extends AggregateRoot<IEvent> {
-  constructor(private props: UserProps) {
+  constructor(private readonly props: UserProps) {
     super();
   }
 
@@ -101,6 +102,8 @@ export class User extends AggregateRoot<IEvent> {
     id: string;
     email: string;
     username: string;
+    firstName: string;
+    lastName: string;
     passwordHash: string;
     role: UserRole;
   }): UserProps {
@@ -108,7 +111,11 @@ export class User extends AggregateRoot<IEvent> {
 
     return new User({
       ...initialProps,
-      profile: new UserProfile(null),
+      profile: new UserProfile({
+        firstName: initialProps.firstName,
+        lastName: initialProps.lastName,
+        avatarUrl: null,
+      }),
       email: new Email(initialProps.email),
       isActive: true,
       emailVerified: false,
@@ -116,11 +123,4 @@ export class User extends AggregateRoot<IEvent> {
       createdAt: now,
     });
   }
-}
-
-export enum UserRole {
-  ADMIN,
-  MODERATOR,
-  CREATOR,
-  USER,
 }

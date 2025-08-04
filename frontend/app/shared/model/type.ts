@@ -10,29 +10,34 @@ export interface Video {
   hlsPlaylistUrl?: string;
   dashManifestUrl?: string;
   duration?: number;
-  fileSize?: number;
+  fileSize?: number | bigint;
   resolution?: string;
   format?: string;
   bitrate?: number;
-  viewCount: number;
-  likeCount: number;
-  commentCount: number;
+  viewCount?: number;
+  likeCount?: number;
+  commentCount?: number;
   tags: string[];
-  category: {
+  category?: {
     id: string;
     name: string;
   };
-  user: {
+  user?: {
     id: string;
     username: string;
     firstName?: string;
     lastName?: string;
-    avatarUrl?: string;
   };
-  qualities: unknown[];
+  qualities?: Array<{
+    qualityLabel: string;
+    resolution: string;
+    bitrate: number;
+    filePath: string;
+    fileSize: number | bigint;
+  }>;
   createdAt: string;
   updatedAt: string;
-  score: number;
+  score?: number;
   highlights?: {
     title?: string[];
     description?: string[];

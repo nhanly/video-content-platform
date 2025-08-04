@@ -147,6 +147,18 @@ export const fetchCategories = async (): Promise<Category[]> => {
   }
 };
 
+export const fetchVideoById = async (id: string): Promise<Video | null> => {
+  try {
+    const response = await apiClient.get<{ success: boolean; data: Video }>(
+      `videos/${id}`
+    );
+    return response.success ? response.data : null;
+  } catch (error) {
+    console.error("Error fetching video:", error);
+    return null;
+  }
+};
+
 // Export the client for direct use
 export { apiClient };
 export default apiClient;

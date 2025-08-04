@@ -5,6 +5,9 @@ import {
   VideoVisibility as PrismaVideoVisibility,
 } from '@prisma/client';
 
+import { Email } from '@/modules/common/email.vo';
+import { User } from '@/modules/user/domain/entities/user.entity';
+import { UserProfile } from '@/modules/user/domain/value-objects/user-profile.vo';
 import { PrismaService } from '@/shared/infrastructure/database/prisma/prisma.service';
 import {
   ProcessingStatus,
@@ -16,13 +19,19 @@ import { VideoFilePaths } from '@/video/domain/value-objects/video-filepath.vo';
 import { VideoMetadata } from '@/video/domain/value-objects/video-metadata.vo';
 
 import { Category } from '../../domain/entities/category.entity';
+import { VideoComment } from '../../domain/entities/video-comment.entity';
 import { VideoQuality } from '../../domain/entities/video-quality.entity';
+import { VideoReaction } from '../../domain/entities/video-reaction.entity';
+import { VideoView } from '../../domain/entities/video-view.entity';
 
 export type VideoWithAllRelations = Prisma.VideoGetPayload<{
   include: {
     user: true;
     category: true;
     qualities: true;
+    views: true;
+    comments: true;
+    reactions: true;
   };
 }>;
 
@@ -57,6 +66,9 @@ export class PrismaVideoRepository implements IVideoRepository {
         user: true,
         category: true,
         qualities: true,
+        views: true,
+        comments: true,
+        reactions: true,
       },
     });
 
@@ -70,13 +82,16 @@ export class PrismaVideoRepository implements IVideoRepository {
         user: true,
         category: true,
         qualities: true,
+        views: true,
+        comments: true,
+        reactions: true,
       },
     });
 
     return video ? this.mapToDomain(video) : null;
   }
 
-  async save(video: Video): Promise<Video> {
+  async save(video: Video): Promise<string> {
     const data = this.mapToPersistence(video);
 
     const savedVideo = await this.prisma.video.upsert({
@@ -90,10 +105,10 @@ export class PrismaVideoRepository implements IVideoRepository {
       },
     });
 
-    return this.mapToDomain(savedVideo);
+    return savedVideo.code;
   }
 
-  async create(video: Video): Promise<Video> {
+  async create(video: Video): Promise<string> {
     const data = this.mapToPersistence(video);
 
     const createdVideo = await this.prisma.video.create({
@@ -105,7 +120,7 @@ export class PrismaVideoRepository implements IVideoRepository {
       },
     });
 
-    return this.mapToDomain(createdVideo);
+    return createdVideo.code;
   }
 
   async delete(id: string): Promise<void> {
@@ -136,6 +151,9 @@ export class PrismaVideoRepository implements IVideoRepository {
           category: true,
           user: true,
           qualities: true,
+          views: true,
+          comments: true,
+          reactions: true,
         },
       }),
       this.prisma.video.count({ where }),
@@ -219,6 +237,62 @@ export class PrismaVideoRepository implements IVideoRepository {
             quality.filePath,
             quality.fileSize,
             quality.createdAt,
+          ),
+      ),
+      video.user
+        ? new User({
+            id: video.user.id,
+            username: video.user.username,
+            email: new Email(video.user.email),
+            passwordHash: video.user.passwordHash,
+            profile: new UserProfile({
+              firstName: video.user.firstName,
+              lastName: video.user.lastName,
+              avatarUrl: video.user.avatarUrl,
+            }),
+            role: video.user.role,
+            isActive: video.user.isActive,
+            emailVerified: video.user.emailVerified,
+            createdAt: video.user.createdAt,
+            updatedAt: video.user.updatedAt,
+          })
+        : null,
+      video.views?.map(
+        (view) =>
+          new VideoView(
+            view.id,
+            view.videoId,
+            view.userId,
+            view.ipAddress,
+            view.userAgent,
+            view.watchDuration,
+            parseFloat(view.completionPercentage.toFixed(2)),
+            view.createdAt,
+          ),
+      ),
+      video.comments?.map(
+        (comment) =>
+          new VideoComment(
+            comment.id,
+            comment.videoId,
+            comment.userId,
+            comment.parentId,
+            comment.content,
+            comment.isEdited,
+            comment.likeCount,
+            comment.dislikeCount,
+            comment.createdAt,
+            comment.updatedAt,
+          ),
+      ),
+      video.reactions?.map(
+        (reaction) =>
+          new VideoReaction(
+            reaction.id,
+            reaction.videoId,
+            reaction.userId,
+            reaction.reactionType,
+            reaction.createdAt,
           ),
       ),
     );

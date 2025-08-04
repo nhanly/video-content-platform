@@ -3,6 +3,9 @@
 import type React from "react";
 
 import { useEffect, useRef, useState } from "react";
+import videojs from "video.js";
+import type Player from "video.js/dist/types/player";
+import "video.js/dist/video-js.css";
 import { useVideoStore } from "@/app/shared/model/store";
 import {
   Play,
@@ -25,12 +28,13 @@ export default function VideoPlayer({
   src,
   poster,
   className = "",
-}: VideoPlayerProps) {
+}: Readonly<VideoPlayerProps>) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<Player | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const [showControls, setShowControls] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDragging] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
 
   const {
@@ -49,64 +53,76 @@ export default function VideoPlayer({
   } = useVideoStore();
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    // Initialize Video.js player
+    const player = videojs(videoElement, {
+      controls: false, // We use our custom controls
+      preload: 'metadata',
+      fluid: true,
+      responsive: true,
+      sources: [{ src, type: 'video/mp4' }],
+      poster,
+    });
+
+    playerRef.current = player;
 
     const handleLoadedMetadata = () => {
-      setDuration(video.duration);
+      setDuration(player.duration() || 0);
     };
 
     const handleTimeUpdate = () => {
       if (!isDragging) {
-        setCurrentTime(video.currentTime);
+        setCurrentTime(player.currentTime() || 0);
       }
     };
 
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
 
-    video.addEventListener("loadedmetadata", handleLoadedMetadata);
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    video.addEventListener("play", handlePlay);
-    video.addEventListener("pause", handlePause);
+    player.on('loadedmetadata', handleLoadedMetadata);
+    player.on('timeupdate', handleTimeUpdate);
+    player.on('play', handlePlay);
+    player.on('pause', handlePause);
 
     return () => {
-      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      video.removeEventListener("timeupdate", handleTimeUpdate);
-      video.removeEventListener("play", handlePlay);
-      video.removeEventListener("pause", handlePause);
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
     };
-  }, [isDragging, setCurrentTime, setDuration, setIsPlaying]);
+  }, [src, poster, isDragging, setCurrentTime, setDuration, setIsPlaying]);
 
   const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
+    const player = playerRef.current;
+    if (!player) return;
 
     if (isPlaying) {
-      video.pause();
+      player.pause();
     } else {
-      video.play();
+      player.play();
     }
   };
 
   const handleVolumeChange = (newVolume: number) => {
-    const video = videoRef.current;
-    if (!video) return;
+    const player = playerRef.current;
+    if (!player) return;
 
-    video.volume = newVolume;
+    player.volume(newVolume);
     setVolume(newVolume);
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const video = videoRef.current;
+    const player = playerRef.current;
     const progress = progressRef.current;
-    if (!video || !progress) return;
+    if (!player || !progress) return;
 
     const rect = progress.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = percent * duration;
 
-    video.currentTime = newTime;
+    player.currentTime(newTime);
     setCurrentTime(newTime);
   };
 
@@ -130,13 +146,12 @@ export default function VideoPlayer({
   };
 
   const skipTime = (seconds: number) => {
-    const video = videoRef.current;
-    if (!video) return;
+    const player = playerRef.current;
+    if (!player) return;
 
-    video.currentTime = Math.max(
-      0,
-      Math.min(duration, video.currentTime + seconds)
-    );
+    const currentTime = player.currentTime() || 0;
+    const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
+    player.currentTime(newTime);
   };
 
   return (
@@ -148,11 +163,9 @@ export default function VideoPlayer({
     >
       <video
         ref={videoRef}
-        src={src}
-        poster={poster}
-        className="w-full h-full"
+        className="video-js vjs-default-skin w-full h-full"
         onClick={togglePlay}
-        crossOrigin="anonymous"
+        data-setup="{}"
       />
 
       {/* Custom Controls */}

@@ -1,10 +1,15 @@
 import { AggregateRoot } from '@nestjs/cqrs';
 import { IEvent } from '@nestjs/cqrs/dist/interfaces';
 
+import { User } from '@/modules/user/domain/entities/user.entity';
+
 import { VideoFilePaths } from '../value-objects/video-filepath.vo';
 import { VideoMetadata } from '../value-objects/video-metadata.vo';
 import { Category } from './category.entity';
+import { VideoComment } from './video-comment.entity';
 import { VideoQuality } from './video-quality.entity';
+import { VideoReaction } from './video-reaction.entity';
+import { VideoView } from './video-view.entity';
 
 export enum ProcessingStatus {
   UPLOADING = 'uploading',
@@ -35,6 +40,10 @@ export class Video extends AggregateRoot<IEvent> {
     public updatedAt: Date,
     private readonly _category?: Category,
     private readonly _videoQualities?: VideoQuality[],
+    private readonly _user?: User,
+    private readonly _views?: VideoView[],
+    private readonly _comments?: VideoComment[],
+    private readonly _reactions?: VideoReaction[],
   ) {
     super();
   }
@@ -83,5 +92,24 @@ export class Video extends AggregateRoot<IEvent> {
   }
   public get category(): Category {
     return this._category;
+  }
+  public get user(): User {
+    return this._user;
+  }
+
+  public getViewCount(): number {
+    return this._views.length;
+  }
+
+  public getLikeCount(): number {
+    return this._reactions.filter((r) => r.isLike()).length;
+  }
+
+  public getDislikeCount(): number {
+    return this._reactions.filter((r) => r.isDislike()).length;
+  }
+
+  public getCommentCount(): number {
+    return this._comments.length;
   }
 }

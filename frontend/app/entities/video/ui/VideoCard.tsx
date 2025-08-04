@@ -15,6 +15,30 @@ export default function VideoCard({ video, className = "" }: VideoCardProps) {
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
+  const formatViewCount = (count?: number) => {
+    if (!count) return "0";
+    if (count < 1000) return count.toString();
+    if (count < 1000000) return `${Math.floor(count / 1000)}K`;
+    return `${Math.floor(count / 1000000)}M`;
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - date.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) return "1 day ago";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+      if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+      return `${Math.floor(diffDays / 365)} years ago`;
+    } catch {
+      return dateString;
+    }
+  };
+
   if (imageError) {
     return <VideoErrorFallback onRetry={() => setImageError(false)} />;
   }
@@ -36,9 +60,11 @@ export default function VideoCard({ video, className = "" }: VideoCardProps) {
           />
 
           {/* Duration Badge */}
-          <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
-            {video.duration}
-          </div>
+          {video.duration && (
+            <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
+              {Math.floor(video.duration / 60)}:{(video.duration % 60).toFixed(0).padStart(2, '0')}
+            </div>
+          )}
 
           {/* Play Overlay */}
           {isHovered && (
@@ -59,11 +85,11 @@ export default function VideoCard({ video, className = "" }: VideoCardProps) {
           <div className="flex items-center space-x-4 text-xs text-gray-500">
             <div className="flex items-center space-x-1">
               <Eye className="w-3 h-3" />
-              <span>{video.viewCount} views</span>
+              <span>{formatViewCount(video.viewCount)} views</span>
             </div>
             <div className="flex items-center space-x-1">
               <Clock className="w-3 h-3" />
-              <span>{video.createdAt}</span>
+              <span>{formatDate(video.createdAt)}</span>
             </div>
           </div>
         </div>

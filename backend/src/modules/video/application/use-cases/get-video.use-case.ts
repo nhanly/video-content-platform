@@ -1,14 +1,9 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { CacheService } from '@/shared/interfaces/cache.service.interface';
 import { VideoResponseDto } from '@/video/application/dto/video-response.dto';
 import { GetVideoQuery } from '@/video/application/queries/get-video.query';
-import { ProcessingStatus } from '@/video/domain/entities/video.entity';
+import { ProcessingStatus, Video } from '@/video/domain/entities/video.entity';
 import { IVideoRepository } from '@/video/domain/repositories/video.repository.interface';
 
 @Injectable()
@@ -27,11 +22,6 @@ export class GetVideoUseCase {
     if (cachedVideo) {
       const parsedVideo = JSON.parse(cachedVideo) as VideoResponseDto;
 
-      // Check access rights for cached video
-      if (!this.canAccessVideo(parsedVideo, query.userId)) {
-        throw new ForbiddenException('Access denied to this video');
-      }
-
       return parsedVideo;
     }
 
@@ -40,11 +30,6 @@ export class GetVideoUseCase {
 
     if (!video) {
       throw new NotFoundException('Video not found');
-    }
-
-    // Check access rights
-    if (!this.canAccessVideo(video, query.userId)) {
-      throw new ForbiddenException('Access denied to this video');
     }
 
     const response = this.mapToResponse(video);
@@ -57,51 +42,27 @@ export class GetVideoUseCase {
     return response;
   }
 
-  private canAccessVideo(video: any, userId?: string): boolean {
-    // Public videos are accessible to everyone
-    if (
-      video.visibility === 'PUBLIC' &&
-      video.status === ProcessingStatus.READY
-    ) {
-      return true;
-    }
-
-    // Private videos are only accessible to the owner
-    if (video.visibility === 'PRIVATE') {
-      return userId === video.userId || userId === video.user?.id;
-    }
-
-    // Videos still processing are only accessible to the owner
-    if (video.status !== ProcessingStatus.READY) {
-      return userId === video.userId || userId === video.user?.id;
-    }
-
-    return false;
-  }
-
-  private mapToResponse(video: any): VideoResponseDto {
+  private mapToResponse(video: Video): VideoResponseDto {
     const nowISO = new Date().toISOString();
     return {
-      id: video.id?.value || video.id,
+      id: video.id,
       title: video.title,
       description: video.description,
       code: video.code,
       status: video.status,
       visibility: video.visibility,
-      thumbnailUrl: video.filePaths?.thumbnailUrl || video.thumbnailUrl,
-      previewGifUrl: video.filePaths?.previewGifUrl || video.previewGifUrl,
-      hlsPlaylistUrl: video.filePaths?.hlsPlaylistUrl || video.hlsPlaylistUrl,
-      dashManifestUrl:
-        video.filePaths?.dashManifestUrl || video.dashManifestUrl,
-      duration: video.metadata?.duration || video.duration,
-      fileSize: video.metadata?.fileSize || video.fileSize,
-      resolution: video.metadata?.resolution || video.resolution,
-      format: video.metadata?.format || video.format,
-      bitrate: video.metadata?.bitrate || video.bitrate,
-      viewCount: video.viewCount || 0,
-      likeCount: video.likeCount || 0,
-      commentCount: video.commentCount || 0,
-      tags: video.tags || [],
+      thumbnailUrl: video.filePaths?.thumbnailUrl,
+      hlsPlaylistUrl: video.filePaths?.hlsPlaylistUrl,
+      dashManifestUrl: video.filePaths?.dashManifestUrl,
+      duration: video.metadata?.duration,
+      fileSize: video.metadata?.fileSize,
+      resolution: video.metadata?.resolution,
+      format: video.metadata?.format,
+      bitrate: video.metadata?.bitrate,
+      viewCount: video.getViewCount(),
+      likeCount: video.getLikeCount(),
+      commentCount: video.getCommentCount(),
+      tags: [],
       category: video.category
         ? {
             id: video.category.id,
@@ -109,12 +70,12 @@ export class GetVideoUseCase {
           }
         : undefined,
       user: {
-        id: video.user.id,
+        id: video.user?.id || video.userId,
         username: video.user?.username || '',
-        firstName: video.user?.firstName,
-        lastName: video.user?.lastName,
+        firstName: video.user?.profile.firstName,
+        lastName: video.user?.profile.lastName,
       },
-      qualities: video.qualities || [],
+      // qualities: video.videoQualities || [],
       createdAt: video.createdAt?.toISOString() || nowISO,
       updatedAt: video.updatedAt?.toISOString() || nowISO,
     };
